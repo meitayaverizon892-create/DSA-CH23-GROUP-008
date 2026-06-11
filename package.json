@@ -1,0 +1,35 @@
+{
+  "name": "dsa-ch23-group-008",
+  "version": "1.0.0",
+  "description": "A1 Social Network — Friends Graph +  Mutual Friend Recommendations",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "start": "node src/api/server.js",
+    "dev": "nodemon src/api/server.js",
+    "test": "node tests/testCases.js"
+},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/meitayaverizon892-create/DSA-CH23-GROUP-008.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/meitayaverizon892-create/DSA-CH23-GROUP-008/issues"
+  },
+  "homepage": "https://github.com/meitayaverizon892-create/DSA-CH23-GROUP-008#readme",
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "pg": "^8.21.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
