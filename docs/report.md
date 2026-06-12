@@ -140,3 +140,219 @@ For example:
   using Hash Set intersection (O(d)) instead.
 - An adjacency matrix for 10,000 users would require 100,000,000 cells 
   (10,000²), which is wasteful — this motivates using an adjacency list instead.
+
+---
+
+## STEP 3: BASIC DESIGN
+
+### 3.1 System Architecture Diagram  
+
+┌─────────────────────────────────────────────┐
+
+│         CLIENT (CLI / API caller)            │
+
+└────────────────────┬──────────────────────--┘
+
+│ HTTP Requests
+
+▼
+
+┌───────────────────────────────────────────--┐
+
+│           API LAYER (Express.js)             │
+
+│ Routes: /users, /friend-request,             │
+
+│         /recommendations, etc.               │
+
+└────────────────────┬─────────────────────--─┘
+
+│
+
+┌──────────────┼──────────────┐
+
+▼               ▼               ▼
+
+┌─────────────┐ ┌────────────────┐ ┌────────────────┐
+
+│ User Registry│ │  Friend Graph   │ │ Request Queue   │
+
+│ (HashMap)    │ │ (Adjacency List)│ │ (Queue/FIFO)    │
+
+└──────┬───────┘ └───────┬─────────┘ └───────┬─────────┘
+
+│                 │                   │
+
+│        ┌────────┴────────┐          │
+
+│        ▼                 ▼          │
+
+│ ┌──────────────┐  ┌──────────────┐  │
+
+│ │Mutual Friends │  │ Action Stack │◄─┘
+
+│ │(BFS + HashMap)│  │ (Undo - LIFO)│
+
+│ └──────┬────────┘  └──────────────┘
+
+│        ▼
+
+│ ┌──────────────┐
+
+│ │  Min-Heap     │
+
+│ │ (Top-K Recs)  │
+
+│ └──────────────┘
+
+▼
+
+┌───────────────────────────────────────────--┐
+
+│   PERSISTENCE LAYER (PostgreSQL Database)    │
+
+│ Tables: users, friendships,                  │
+
+│         friend_requests, action_log          │
+
+└───────────────────────────────────────────--┘
+
+### 3.2 Data Structure Assignment Table
+
+| Component | Data Structure | File Location | Justification (linked to Use Case) |
+|-----------|----------------|---------------|-------------------------------------|
+| User Registry | Hash Map | `src/datastructures/UserRegistry.js` | O(1) lookup by ID/username (UC2, UC9) |
+| Friend Graph | Graph (Adjacency List via HashMap of Sets) | `src/datastructures/FriendGraph.js` | O(1) edge add/remove; supports BFS (UC6, UC7, UC8) |
+| Friend Request Queue | Queue (FIFO) | `src/datastructures/RequestQueue.js` | Requests processed in arrival order (UC3, UC5) |
+| Undo History | Stack (LIFO) | `src/datastructures/ActionStack.js` | Most recent action reversed first (UC11) |
+| Mutual Friends Finder | Graph BFS + Hash Map | `src/algorithms/MutualFriends.js` | Traverses friend network, counts overlaps (UC7, UC8) |
+| Top-K Recommendations | Min-Heap | `src/datastructures/MinHeap.js` | Maintains only top K candidates efficiently (UC8) |
+| User Listing | Merge Sort | `src/algorithms/Sorting.js` | O(n log n) alphabetical ordering (UC10) |
+| User Search | Binary Search | `src/algorithms/Sorting.js` | O(log n) lookup on sorted list (UC9) |
+
+### 3.3 Module / Class Outline
+
+src/
+
+├── models/
+
+│   ├── User.js
+
+│   │   - Properties: id, username, email, passwordHash
+
+│   │   - Represents a single user
+
+│   │
+
+│   └── Friendship.js
+
+│       - Properties: userId1, userId2, createdAt
+
+│       - Represents a connection between two users
+
+│
+
+├── datastructures/
+
+│   ├── UserRegistry.js
+
+│   │   - addUser(user)
+
+│   │   - getUserById(id)
+
+│   │   - getUserByUsername(username)
+
+│   │   - getAllUsers()
+
+│   │
+
+│   ├── FriendGraph.js
+
+│   │   - addUser(userId)
+
+│   │   - addFriendship(idA, idB)
+
+│   │   - removeFriendship(idA, idB)
+
+│   │   - getFriends(userId)
+
+│   │   - areFriends(idA, idB)
+
+│   │
+
+│   ├── RequestQueue.js
+
+│   │   - enqueue(request)
+
+│   │   - dequeue()
+
+│   │   - processNext(graph, actionStack)
+
+│   │
+
+│   ├── ActionStack.js
+
+│   │   - push(action)
+
+│   │   - pop()
+
+│   │   - undo(graph)
+
+│   │
+
+│   └── MinHeap.js
+
+│       - insert(item)
+
+│       - extractMin()
+
+│       - getTopK(candidates, k)
+
+│
+
+├── algorithms/
+
+│   ├── MutualFriends.js
+
+│   │   - getMutual(graph, userA, userB)
+
+│   │   - getFriendsOfFriends(graph, userId)  ← BFS
+
+│   │
+
+│   └── Sorting.js
+
+│       - mergeSort(users)
+
+│       - binarySearch(sortedUsers, username)
+
+│
+
+├── api/
+
+│   └── server.js
+
+│       - All Express routes (endpoints)
+
+│
+
+└── cli/
+
+└── cli.js (optional, if CLI interface chosen)
+
+### 3.4 API Endpoint Map
+
+| Method | Endpoint | Purpose | Use Case |
+|--------|----------|---------|----------|
+| POST | /users | Register new user | UC1 |
+| POST | /login | Authenticate user | UC2 |
+| POST | /friend-request | Send friend request (enqueue) | UC3 |
+| GET | /friend-requests/:userId | View pending requests | UC4 |
+| POST | /process-request | Process next request in queue | UC5 |
+| GET | /friends/:userId | View friend list | UC6 |
+| GET | /mutual-friends/:idA/:idB | Get mutual friends | UC7 |
+| GET | /recommendations/:userId | Get top-K recommendations | UC8 |
+| GET | /users/search?name= | Search user by name | UC9 |
+| GET | /users/sorted | View alphabetical user list | UC10 |
+| POST | /undo/:userId | Undo last action | UC11 |
+| GET | /path/:idA/:idB | Shortest connection path (BFS) | UC12 |
