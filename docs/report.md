@@ -89,3 +89,54 @@
 4. User receives confirmation: "Action undone"
 
 **Data Structure Used:** Stack (LIFO — most recent action reversed first)
+
+---
+
+## STEP 2: CONSTRAINTS AND ANALYSIS
+
+### 2.1 Functional Constraints
+These are rules the system must always enforce:
+
+- A user cannot send a friend request to themselves
+- A user cannot send a duplicate friend request to the same person twice
+- Friendships are mutual (undirected) — if A is friends with B, B is friends with A
+- Recommendations must exclude users who are already friends
+- The undo action only reverses the user's own most recent action
+- Friend requests are processed in the exact order they were received (FIFO)
+
+### 2.2 Non-Functional Constraints
+
+| Constraint | Value | Reason |
+|-----------|-------|--------|
+| Max users (demo scale) | 10,000 | Realistic for testing on a laptop |
+| Max friends per user | 500 | Reasonable upper bound for social networks |
+| Recommendation response time | < 2 seconds | Must feel instant to the user |
+| Search response time | < 100ms | Search should feel instant |
+| Storage | PostgreSQL | Persistent storage; in-memory structures for speed |
+| Environment | Single laptop, no cloud | Demo runs locally |
+| Read vs Write ratio | 80% reads / 20% writes | Most actions are viewing, not editing |
+
+### 2.3 Data Volume Analysis
+
+| Metric | Estimated Value | Calculation |
+|--------|-----------------|-------------|
+| Total users (n) | 10,000 | Demo scale assumption |
+| Average friends per user | 150 | Realistic average |
+| Total friendship edges | ~750,000 | (10,000 × 150) / 2 |
+| Friend requests per day | ~500 | Estimated activity |
+| Recommendation requests per day | ~5,000 | Triggered on profile views |
+
+### 2.4 Assumptions Made
+- All data fits in memory for the demo (no need for distributed storage)
+- A single server instance is sufficient (no load balancing required)
+- Network latency is not a factor (local demo)
+- Users are uniquely identified by an auto-incremented integer ID
+
+### 2.5 Why These Constraints Matter
+These numbers directly influence our data structure choices in Step 3 (Basic Design). 
+For example:
+- 10,000 users with 150 friends each means a naive mutual-friends check 
+  (O(d²)) would require up to 22,500 comparisons per pair — this motivates 
+  using Hash Set intersection (O(d)) instead.
+- An adjacency matrix for 10,000 users would require 100,000,000 cells 
+  (10,000²), which is wasteful — this motivates using an adjacency list instead.
