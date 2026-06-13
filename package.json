@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node src/api/server.js",
     "dev": "nodemon src/api/server.js",
-    "test": "node tests/testCases.js"
+    "test": "node tests/runAllTests.js"
 },
   "repository": {
     "type": "git",
