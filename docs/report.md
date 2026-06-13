@@ -356,3 +356,125 @@ src/
 | GET | /users/sorted | View alphabetical user list | UC10 |
 | POST | /undo/:userId | Undo last action | UC11 |
 | GET | /path/:idA/:idB | Shortest connection path (BFS) | UC12 |
+
+
+---
+
+## STEP 4: BOTTLENECKS
+
+For each component in our Basic Design (Step 3), we analyze its behavior 
+at our defined scale (10,000 users, ~150 friends average, Step 2).
+
+### 4.1 Bottleneck 1 — Naive Mutual Friends Calculation
+
+**Component affected:** Mutual Friends Finder (UC7, UC8)
+
+**Naive approach:** For each friend of User A, loop through every friend 
+of User B to check for a match.
+
+**Complexity:** O(d_A × d_B), where d = number of friends
+
+**Problem at scale:**
+- If both users have 150 friends: 150 × 150 = 22,500 comparisons
+- If a popular user has 500 friends: 500 × 500 = 250,000 comparisons
+- Called on every profile view (5,000 times/day) → 1.125 billion 
+  comparisons/day in worst case
+
+**Verdict:** Unacceptable. Will cause noticeable lag (> 2 second 
+constraint from Step 2).
+
+---
+
+### 4.2 Bottleneck 2 — Recalculating Top-K Recommendations Every Time
+
+**Component affected:** Recommendation Engine (UC8)
+
+**Naive approach:** Collect ALL friend-of-friend candidates, sort the 
+entire list by mutual count, then take the top 5.
+
+**Complexity:** O(n log n), where n = number of candidates
+
+**Problem at scale:**
+- A user with 150 friends, each having ~150 friends, generates up to 
+  22,500 candidate entries (before deduplication)
+- Sorting 22,500 entries fully, just to take the top 5, wastes effort 
+  on the 22,495 entries we discard
+- At 5,000 recommendation requests/day, this adds significant 
+  unnecessary computation
+
+**Verdict:** Wasteful. We only need the top 5 — sorting everything 
+is overkill.
+
+---
+
+### 4.3 Bottleneck 3 — Linear Search for Users
+
+**Component affected:** User Search (UC9)
+
+**Naive approach:** Loop through the entire user list comparing 
+usernames one by one.
+
+**Complexity:** O(n), where n = total users
+
+**Problem at scale:**
+- At 10,000 users, a search for a non-existent username requires 
+  10,000 comparisons (worst case)
+- Constraint from Step 2 requires search response < 100ms — 
+  linear search on 10,000 items risks exceeding this if called 
+  frequently
+
+**Verdict:** Too slow for the responsiveness constraint.
+
+---
+
+### 4.4 Bottleneck 4 — Adjacency Matrix for Friend Graph
+
+**Component affected:** Friend Graph storage (UC6, UC7, UC8, UC12)
+
+**Naive approach:** Store friendships as an n × n grid where 
+matrix[i][j] = 1 if users i and j are friends.
+
+**Complexity:** O(n²) space
+
+**Problem at scale:**
+- At 10,000 users: 10,000² = 100,000,000 cells
+- Even using 1 byte per cell = 100 MB just for the friend graph, 
+  for data that is mostly empty (most user pairs are NOT friends — 
+  the graph is "sparse")
+- This wastes memory that a standard laptop should not need to spend
+
+**Verdict:** Memory-inefficient. A sparse graph should not use 
+dense storage.
+
+---
+
+### 4.5 Bottleneck 5 — Undo Stack Growing Unbounded
+
+**Component affected:** Action Stack (UC11)
+
+**Naive approach:** Push every single action a user ever performs, 
+forever, with no limit.
+
+**Complexity:** O(1) per push, but O(n) memory growth over time, 
+where n = total actions ever performed
+
+**Problem at scale:**
+- A very active user performing thousands of actions over months 
+  would have a stack of thousands of entries
+- Most of this history is irrelevant — users typically only undo 
+  their last 1-2 actions
+
+**Verdict:** Memory grows unnecessarily for a feature that is 
+rarely used beyond the most recent action.
+
+---
+
+### 4.6 Summary Table
+
+| # | Bottleneck | Operation | Naive Complexity | At Scale (10,000 users) |
+|---|-----------|-----------|-------------------|--------------------------|
+| 1 | Mutual friends | Nested loop comparison | O(d²) | Up to 250,000 ops/pair |
+| 2 | Top-K recommendations | Full sort of candidates | O(n log n) | ~22,500 × log(22,500) |
+| 3 | User search | Linear scan | O(n) | Up to 10,000 ops |
+| 4 | Graph storage | Adjacency matrix | O(n²) space | ~100 MB wasted |
+| 5 | Undo history | Unbounded stack | O(n) memory | Unbounded growth |
