@@ -478,3 +478,128 @@ rarely used beyond the most recent action.
 | 3 | User search | Linear scan | O(n) | Up to 10,000 ops |
 | 4 | Graph storage | Adjacency matrix | O(n²) space | ~100 MB wasted |
 | 5 | Undo history | Unbounded stack | O(n) memory | Unbounded growth |
+
+
+---
+
+## STEP 5: SCALABILITY
+
+For each bottleneck identified in Step 4, we apply a targeted fix. 
+We iterate until each operation meets the performance constraints 
+defined in Step 2 (response times < 2s for recommendations, 
+< 100ms for search).
+
+### 5.1 Fix for Bottleneck 1 — Hash Set Intersection for Mutual Friends
+
+**Problem:** Nested loop comparison was O(d_A × d_B), up to 250,000 
+operations per pair.
+
+**Fix:** Represent each user's friend list as a **Hash Set**. To find 
+mutual friends, iterate over the *smaller* set and check membership in 
+the *larger* set using O(1) hash lookups.
+
+**New Complexity:** O(min(d_A, d_B))
+
+**Before vs After (500 friends each):**
+
+
+**Iteration check:** With 500 operations per pair, even at 5,000 
+recommendation requests/day, total operations = 2,500,000/day — 
+trivial for a modern CPU. ✅ Acceptable — no further iteration needed.
+
+---
+
+### 5.2 Fix for Bottleneck 2 — Min-Heap for Top-K Recommendations
+
+**Problem:** Sorting all ~22,500 candidates fully (O(n log n)) just 
+to extract the top 5 was wasteful.
+
+**Fix:** Maintain a **Min-Heap of fixed size K=5**. For each candidate:
+- If the heap has fewer than K items, insert it
+- Otherwise, if the candidate's mutual count is greater than the 
+  heap's minimum, remove the minimum and insert the candidate
+
+**New Complexity:** O(n log K), where K is constant (5)
+
+**Before vs After (22,500 candidates, K=5):**
+
+
+**Iteration check:** 51,750 operations per request, well within the 
+2-second constraint. ✅ Acceptable.
+
+---
+
+### 5.3 Fix for Bottleneck 3 — Merge Sort + Binary Search for User Lookup
+
+**Problem:** Linear search was O(n), up to 10,000 comparisons.
+
+**Fix:** Maintain the user list in **sorted order** (sorted once using 
+Merge Sort when users are loaded/added, kept sorted via insertion). 
+Use **Binary Search** to find a user by username.
+
+**New Complexity:** 
+- Sorting (one-time or on update): O(n log n)
+- Search (per query): O(log n)
+
+**Before vs After (10,000 users):**
+
+
+**Iteration check:** 14 comparisons is effectively instant — 
+well under the 100ms constraint. ✅ Acceptable.
+
+---
+
+### 5.4 Fix for Bottleneck 4 — Adjacency List Instead of Matrix
+
+**Problem:** Adjacency matrix used O(n²) space ≈ 100MB for 10,000 users.
+
+**Fix:** Use an **adjacency list** — a Hash Map where each key is a 
+user ID and the value is a Hash Set of that user's friend IDs.
+
+**New Complexity:** O(V + E) space, where V = users, E = friendship edges
+
+**Before vs After (10,000 users, 750,000 edges from Step 2):**
+
+
+**Iteration check:** A few MB is negligible for any laptop. 
+✅ Acceptable — also enables O(1) friend lookups and O(degree) 
+BFS traversal, which the matrix could not provide efficiently.
+
+---
+
+### 5.5 Fix for Bottleneck 5 — Bounded Undo Stack
+
+**Problem:** Unbounded action history caused unnecessary memory growth.
+
+**Fix:** Cap the **Action Stack** at a fixed size (e.g., last 10 actions). 
+When the stack exceeds this size, remove the oldest entry (bottom of stack).
+
+**New Complexity:** O(1) memory — fixed maximum size regardless of 
+total actions performed
+
+**Before vs After:**
+
+
+**Iteration check:** 10 entries is more than enough for "undo my 
+last action" use cases (UC11). ✅ Acceptable.
+
+---
+
+### 5.6 Summary Table — Before and After
+
+| # | Component | Before (Naive) | After (Optimized) | Result |
+|---|-----------|----------------|---------------------|--------|
+| 1 | Mutual friends | O(d²) | O(min(d_A, d_B)) | 500× faster |
+| 2 | Top-K recommendations | O(n log n) | O(n log K) | ~6× faster |
+| 3 | User search | O(n) | O(log n) | ~714× faster |
+| 4 | Graph storage | O(n²) space | O(V + E) space | ~95% less memory |
+| 5 | Undo history | O(n) memory | O(1) memory | Constant memory |
+
+### 5.7 Final Iteration Check
+
+All five components now meet the constraints defined in Step 2:
+- Recommendation response time: well under 2 seconds ✅
+- Search response time: well under 100ms ✅
+- Memory usage: within standard laptop capacity ✅
+
+No further iteration is required. The design is ready for implementation.
